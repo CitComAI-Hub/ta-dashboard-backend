@@ -13,6 +13,13 @@ const USER = process.env.AUTH_USER || 'admin';
 const PASS = process.env.AUTH_PASS || 'admin';
 const TIR_BASE_URL = process.env.TIR_BASE_URL || 'http://tir:8080';
 
+console.log('Auth backend config', {
+  authUser: USER,
+  tirBaseUrl: TIR_BASE_URL,
+  jwtSecretProvided: Boolean(process.env.JWT_SECRET),
+  customCreds: Boolean(process.env.AUTH_USER || process.env.AUTH_PASS),
+});
+
 function authMiddleware(req, res, next) {
   const auth = req.headers.authorization;
   if (!auth || !auth.startsWith('Bearer ')) return res.status(401).json({ error: 'No token' });
