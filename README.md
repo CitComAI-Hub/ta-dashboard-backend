@@ -2,7 +2,7 @@
 
 - Workflow: `.github/workflows/publish.yaml`
 - Trigger: `push` to `main` or manual `workflow_dispatch`
-- Result: builds the Docker image and pushes it to `ghcr.io/citcomai-hub/ta-dashboard-backend/auth-backend` (tags `latest` and the commit SHA). No manual credentials are required because the workflow uses `GITHUB_TOKEN` with `packages: write`.
+- Result: builds the Docker image and pushes it to `ghcr.io/citcomai-hub/ta-dashboard-backend` (tags `latest` and the commit SHA). No manual credentials are required because the workflow uses `GITHUB_TOKEN` with `packages: write`.
 
 ## Manual build/push (fallback)
 
@@ -16,9 +16,9 @@
 	```
 3. Tag for GitHub Packages (repo `CitComAI-Hub/ta-dashboard-backend`):
 	```bash
-	docker tag auth-backend:latest ghcr.io/citcomai-hub/ta-dashboard-backend/auth-backend:latest
+	docker tag auth-backend:latest ghcr.io/citcomai-hub/ta-dashboard-backend:latest
 	```
 4. Push the image:
 	```bash
-	docker push ghcr.io/citcomai-hub/ta-dashboard-backend/auth-backend:latest
+	docker push ghcr.io/citcomai-hub/ta-dashboard-backend:latest
 	```
