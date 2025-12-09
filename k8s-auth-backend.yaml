@@ -17,13 +17,10 @@ spec:
         image: ghcr.io/citcomai-hub/ta-dashboard-backend:latest
         ports:
         - containerPort: 4000
+        envFrom:
+        - secretRef:
+            name: auth-backend-secret
         env:
-        - name: AUTH_USER
-          value: "admin"
-        - name: AUTH_PASS
-          value: "admin"
-        - name: JWT_SECRET
-          value: "supersecret"
         - name: TIR_BASE_URL
           value: "http://trusted-issuer-list:8080"
         - name: ALLOWED_ORIGINS

@@ -5,17 +5,30 @@ const bodyParser = require('body-parser');
 const fetch = require('node-fetch');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
+const bcrypt = require('bcryptjs');
 const AbortController = global.AbortController || require('abort-controller');
 
 const app = express();
 
 function loadConfig() {
-  const requiredEnv = ['JWT_SECRET', 'AUTH_USER', 'AUTH_PASS', 'TIR_BASE_URL', 'ALLOWED_ORIGINS'];
+  const requiredEnv = ['JWT_SECRET', 'AUTH_USER', 'TIR_BASE_URL', 'ALLOWED_ORIGINS'];
   const missingEnv = requiredEnv.filter((name) => !process.env[name]);
   if (missingEnv.length) {
     console.error('Missing required environment variables:', missingEnv.join(', '));
     process.exit(1);
   }
+
+  let passwordHash = process.env.AUTH_PASS_HASH;
+  if (!passwordHash) {
+    const plainPassword = process.env.AUTH_PASS;
+    if (!plainPassword) {
+      console.error('Missing AUTH_PASS_HASH (preferred) or AUTH_PASS environment variable.');
+      process.exit(1);
+    }
+    passwordHash = bcrypt.hashSync(plainPassword, 12);
+    console.warn('AUTH_PASS provided; hashing at startup. Prefer supplying AUTH_PASS_HASH to avoid plaintext secrets.');
+  }
+  delete process.env.AUTH_PASS;
 
   const allowedOrigins = process.env.ALLOWED_ORIGINS.split(',').map((origin) => origin.trim()).filter(Boolean);
   if (!allowedOrigins.length) {
@@ -26,7 +39,7 @@ function loadConfig() {
   return {
     JWT_SECRET: process.env.JWT_SECRET,
     USER: process.env.AUTH_USER,
-    PASS: process.env.AUTH_PASS,
+    PASSWORD_HASH: passwordHash,
     TIR_BASE_URL: process.env.TIR_BASE_URL,
     allowedOrigins,
     FETCH_TIMEOUT: Number(process.env.FETCH_TIMEOUT_MS || '5000'),
@@ -37,7 +50,7 @@ function loadConfig() {
 }
 
 const config = loadConfig();
-const { JWT_SECRET, USER, PASS } = config;
+const { JWT_SECRET, USER, PASSWORD_HASH } = config;
 
 const corsOptions = {
   origin(origin, callback) {
@@ -105,7 +118,8 @@ app.post('/login', ensureJsonObject, (req, res) => {
   if (typeof username !== 'string' || typeof password !== 'string') {
     return res.status(400).json({ error: 'Invalid payload' });
   }
-  if (username === USER && password === PASS) {
+  const passwordMatches = bcrypt.compareSync(password, PASSWORD_HASH);
+  if (username === USER && passwordMatches) {
     const token = jwt.sign({ username }, JWT_SECRET, { expiresIn: '8h' });
     return res.json({ token });
   }
