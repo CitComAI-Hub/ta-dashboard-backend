@@ -26,6 +26,8 @@ spec:
           value: "supersecret"
         - name: TIR_BASE_URL
           value: "http://trusted-issuer-list:8080"
+        - name: ALLOWED_ORIGINS
+          value: "https://auth.54.76.44.128.nip.io"
 ---
 apiVersion: v1
 kind: Service
