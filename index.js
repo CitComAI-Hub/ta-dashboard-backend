@@ -8,40 +8,47 @@ const rateLimit = require('express-rate-limit');
 const AbortController = global.AbortController || require('abort-controller');
 
 const app = express();
-const requiredEnv = ['JWT_SECRET', 'AUTH_USER', 'AUTH_PASS', 'TIR_BASE_URL', 'ALLOWED_ORIGINS'];
-const missingEnv = requiredEnv.filter((name) => !process.env[name]);
-if (missingEnv.length) {
-  console.error('Missing required environment variables:', missingEnv.join(', '));
-  process.exit(1);
+
+function loadConfig() {
+  const requiredEnv = ['JWT_SECRET', 'AUTH_USER', 'AUTH_PASS', 'TIR_BASE_URL', 'ALLOWED_ORIGINS'];
+  const missingEnv = requiredEnv.filter((name) => !process.env[name]);
+  if (missingEnv.length) {
+    console.error('Missing required environment variables:', missingEnv.join(', '));
+    process.exit(1);
+  }
+
+  const allowedOrigins = process.env.ALLOWED_ORIGINS.split(',').map((origin) => origin.trim()).filter(Boolean);
+  if (!allowedOrigins.length) {
+    console.error('ALLOWED_ORIGINS must contain at least one allowed domain.');
+    process.exit(1);
+  }
+
+  return {
+    JWT_SECRET: process.env.JWT_SECRET,
+    USER: process.env.AUTH_USER,
+    PASS: process.env.AUTH_PASS,
+    TIR_BASE_URL: process.env.TIR_BASE_URL,
+    allowedOrigins,
+    FETCH_TIMEOUT: Number(process.env.FETCH_TIMEOUT_MS || '5000'),
+    JSON_BODY_LIMIT: process.env.JSON_BODY_LIMIT || '1mb',
+    RATE_LIMIT_WINDOW_MS: Number(process.env.RATE_LIMIT_WINDOW_MS || String(15 * 60 * 1000)),
+    RATE_LIMIT_MAX: Number(process.env.RATE_LIMIT_MAX || '200'),
+  };
 }
 
-const {
-  JWT_SECRET,
-  AUTH_USER: USER,
-  AUTH_PASS: PASS,
-  TIR_BASE_URL,
-  ALLOWED_ORIGINS,
-  FETCH_TIMEOUT_MS = '5000',
-  JSON_BODY_LIMIT = '1mb',
-  RATE_LIMIT_WINDOW_MS = String(15 * 60 * 1000),
-  RATE_LIMIT_MAX = '200',
-} = process.env;
-
-const allowedOrigins = ALLOWED_ORIGINS.split(',').map((origin) => origin.trim()).filter(Boolean);
-if (!allowedOrigins.length) {
-  console.error('ALLOWED_ORIGINS must contain at least one allowed domain.');
-  process.exit(1);
-}
+const config = loadConfig();
+const { JWT_SECRET, USER, PASS } = config;
 
 const corsOptions = {
   origin(origin, callback) {
     if (!origin) return callback(null, true);
-    if (allowedOrigins.includes(origin)) return callback(null, true);
+    if (config.allowedOrigins.includes(origin)) return callback(null, true);
     return callback(new Error('Origin not allowed by CORS'));
   },
   credentials: true,
 };
 
+// --- Global middleware ---
 app.use(helmet());
 app.use(cors(corsOptions));
 app.use((err, req, res, next) => {
@@ -50,11 +57,11 @@ app.use((err, req, res, next) => {
   }
   return next(err);
 });
-app.use(bodyParser.json({ limit: JSON_BODY_LIMIT }));
+app.use(bodyParser.json({ limit: config.JSON_BODY_LIMIT }));
 app.use(
   rateLimit({
-    windowMs: Number(RATE_LIMIT_WINDOW_MS),
-    max: Number(RATE_LIMIT_MAX),
+    windowMs: config.RATE_LIMIT_WINDOW_MS,
+    max: config.RATE_LIMIT_MAX,
     standardHeaders: true,
     legacyHeaders: false,
   }),
@@ -67,13 +74,12 @@ function ensureJsonObject(req, res, next) {
   return next();
 }
 
-const FETCH_TIMEOUT = Number(FETCH_TIMEOUT_MS);
-
 async function forwardToTir(path, options = {}) {
+  // AbortController guards against hanging upstream requests.
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT);
+  const timeoutId = setTimeout(() => controller.abort(), config.FETCH_TIMEOUT);
   try {
-    const response = await fetch(`${TIR_BASE_URL}${path}`, { ...options, signal: controller.signal });
+    const response = await fetch(`${config.TIR_BASE_URL}${path}`, { ...options, signal: controller.signal });
     const data = await response.json().catch(() => ({}));
     return { response, data };
   } finally {
@@ -89,10 +95,11 @@ function authMiddleware(req, res, next) {
     req.user = payload;
     next();
   } catch {
-    return res.status(401).json({                       error: 'Invalid token' });
+    return res.status(401).json({ error: 'Invalid token' });
   }
 }
 
+// --- Routes ---
 app.post('/login', ensureJsonObject, (req, res) => {
   const { username, password } = req.body;
   if (typeof username !== 'string' || typeof password !== 'string') {
@@ -130,7 +137,6 @@ app.post('/api/issuer', authMiddleware, ensureJsonObject, async (req, res) => {
   }
 });
 
-// Nuevo: proxy DELETE /api/issuer/:did
 app.delete('/api/issuer/:did', authMiddleware, async (req, res) => {
   try {
     const { did } = req.params;
