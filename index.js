@@ -164,6 +164,23 @@ app.delete('/api/issuer/:did', authMiddleware, async (req, res) => {
   }
 });
 
+app.put('/api/issuer/:did', authMiddleware, ensureJsonObject, async (req, res) => {
+  try {
+    const { did } = req.params;
+    const { response, data } = await forwardToTir(`/issuer/${did}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(req.body),
+    });
+    res.status(response.status).json(data);
+  } catch (err) {
+    const status = err.name === 'AbortError' ? 504 : 502;
+    res.status(status).json({ error: 'Error connecting to TIR', detail: err.message });
+  }
+});
+
 // Proxy público para /api/v4/issuers
 app.get('/api/v4/issuers', async (req, res) => {
   try {
